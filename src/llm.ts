@@ -111,6 +111,12 @@ export async function agentCall(opts: {
   throw new Error("agentCall: too many continuations");
 }
 
+/** The CLI's --json-schema validator rejects zod's draft 2020-12 `$schema` tag, so drop it. */
+function cliSchema(schema: z.ZodType): object {
+  const { $schema: _ignored, ...rest } = z.toJSONSchema(schema) as Record<string, unknown>;
+  return rest;
+}
+
 /** A single structured-output call (no tools). */
 export async function structuredCall<S extends z.ZodType>(opts: {
   model: string;
@@ -125,7 +131,7 @@ export async function structuredCall<S extends z.ZodType>(opts: {
       model: opts.model,
       system: opts.system,
       user: opts.user,
-      schema: z.toJSONSchema(opts.schema),
+      schema: cliSchema(opts.schema),
       web: false,
       effort: opts.effort,
     });
