@@ -12,7 +12,7 @@ app.use(express.static(path.join(process.cwd(), "public")));
 const live = new Map<string, Debate>();
 
 app.get("/api/config", (_req, res) => {
-  res.json({ mock: config.mock, mkModel: config.mkModel, reactionModel: config.reactionModel, reactions: config.reactions });
+  res.json({ mock: config.mock, backend: config.backend, mkModel: config.mkModel, reactionModel: config.reactionModel, reactions: config.reactions });
 });
 
 app.get("/api/roster", (_req, res) => {
@@ -107,5 +107,5 @@ app.post("/api/sessions/:id/control", (req, res) => {
 
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => {
-  console.log(`🏛️  knAIset running on http://localhost:${port}${config.mock ? "  (MOCK mode)" : ""}`);
+  console.log(`🏛️  knAIset running on http://localhost:${port}  (backend: ${config.backend})`);
 });

@@ -3,3 +3,4 @@ data/sessions/*.json
 data/research-cache/
 .env
 dist/
+data/cli-work/

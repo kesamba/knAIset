@@ -14,7 +14,10 @@ cp .env.example .env          # ואז להכניס ANTHROPIC_API_KEY
 npm start                     # http://localhost:3000
 ```
 
-אפשר גם בלי מפתח: `npm run demo` מפעיל **מצב דמו** עם תוכן מוכן מראש. הוא טוב לבדיקת ה-UI ומנגנון התורות.
+**בלי מפתח API:** אם `ANTHROPIC_API_KEY` לא מוגדר, המשחק מריץ כל סוכן דרך Claude Code CLI (`claude -p`),
+עם ההתחברות הקיימת של ה-CLI (מנוי Claude או סשן ענן). כל קריאה היא תהליך נפרד עם system prompt משלו. אפשר לכפות את זה עם `BACKEND=cli`.
+
+**מצב דמו:** `npm run demo` מפעיל **מצב דמו** עם תוכן מוכן מראש. הוא טוב לבדיקת ה-UI ומנגנון התורות.
 
 ## המשתתפים (הכנסת ה-26, אחרי הבחירות של 27.10.2026)
 
@@ -90,6 +93,7 @@ npm start                     # http://localhost:3000
 | `SPEECH_EFFORT` / `RESEARCH_EFFORT` | `medium` | עומק החשיבה |
 | `REACTIONS` | `on` | `off` מכבה את שלב ההקשבה |
 | `CONCURRENCY` | `4` | כמה קריאות API רצות במקביל |
+| `BACKEND` | אוטומטי | `api` (מפתח API), `cli` (דרך `claude -p`) או `mock` |
 | `MOCK` | `0` | מצב דמו |
 
 בקריאות ל-Opus מוגדר גם `fallbacks: "default"`. אם המודל מסרב לבקשה, הבקשה רצה שוב אוטומטית על מודל חלופי.
@@ -107,6 +111,7 @@ src/agent.ts         סוכן ח"כ: research / speak / react / vote
 src/debate.ts        המשחק: מקל דיבור, תורות, הצבעה, אירועים
 src/chair.ts         היו"ר הניטרלי: ניסוח הצעה וסיכום
 src/prompts.ts       כל הפרומפטים
+src/cli.ts           backend דרך Claude Code CLI (בלי מפתח API)
 src/llm.ts           Anthropic SDK: streaming, pause_turn, structured outputs, fallbacks
 src/mock.ts          מצב דמו
 src/server.ts        Express + SSE

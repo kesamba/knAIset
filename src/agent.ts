@@ -17,6 +17,7 @@ import {
 import { mkSystemPrompt, reactionPrompt, researchPrompt, speakPrompt, votePrompt, TODAY } from "./prompts.js";
 import { dynamicsBriefFor, loadPersona, loadResearchGuide, relationshipBriefFor } from "./roster.js";
 import * as mock from "./mock.js";
+import { cliCall } from "./cli.js";
 
 const CACHE_DIR = path.join(process.cwd(), "data", "research-cache");
 
@@ -56,6 +57,30 @@ function speakTool(memberIds: string[]): Anthropic.Beta.Messages.BetaTool {
     },
   };
 }
+
+interface SpeakInput {
+  speech: string;
+  addressed_to: string[];
+  tone: Tone;
+  stance: Stance;
+  inner_thought: string;
+  ready_to_vote: boolean;
+  proposed_resolution: string;
+}
+
+const CLI_RESEARCH_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["dossier", "sources", "queries"],
+  properties: {
+    dossier: { type: "string" },
+    sources: {
+      type: "array",
+      items: { type: "object", additionalProperties: false, required: ["title", "url"], properties: { title: { type: "string" }, url: { type: "string" } } },
+    },
+    queries: { type: "array", items: { type: "string" } },
+  },
+};
 
 const ReactionSchema = z.object({
   thought: z.string(),
@@ -120,6 +145,21 @@ export class MKAgent {
       this.dossier = await mock.research(this.profile, topic, onProgress);
       return this.dossier;
     }
+    if (config.backend === "cli") {
+      const r = await cliCall<{ dossier: string; sources: Source[]; queries: string[] }>({
+        model: config.mkModel,
+        system: this.system,
+        user: `${researchPrompt(this.profile, topic)}\n\nהחזר JSON: dossier הוא תיק המודיעין, sources הם המקורות שבאמת קראת (title, url), ו-queries הן השאילתות שהרצת.`,
+        schema: CLI_RESEARCH_SCHEMA,
+        web: true,
+        effort: config.researchEffort,
+      });
+      onProgress((r.queries ?? []).map((q) => `🔎 ${q}`));
+      this.dossier = { mkId: this.profile.id, notes: r.dossier.trim(), sources: (r.sources ?? []).slice(0, 12), fromCache: false };
+      fs.mkdirSync(CACHE_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(this.dossier, null, 2));
+      return this.dossier;
+    }
     const { blocks } = await agentCall({
       model: config.mkModel,
       system: this.system,
@@ -138,34 +178,48 @@ export class MKAgent {
   /** Holding the stick: compose a speech that responds to the room. */
   async speak(ctx: SpeakContext): Promise<Omit<Speech, "id" | "index" | "at" | "stickReason"> & { queries: string[] }> {
     if (config.mock) return mock.speak(this.profile, ctx);
+    const prompt = speakPrompt({
+      topic: ctx.topic,
+      dossier: this.dossier?.notes ?? "(אין)",
+      privateLog: this.privateLog.slice(-10).join("\n"),
+      transcript: ctx.transcript,
+      stickReason: ctx.stickReason,
+      turnsLeft: ctx.turnsLeft,
+    });
+    if (config.backend === "cli") {
+      const tool = speakTool(this.otherIds);
+      const schema = {
+        ...tool.input_schema,
+        required: [...(tool.input_schema.required ?? []), "sources", "queries"],
+        properties: {
+          ...(tool.input_schema.properties as Record<string, unknown>),
+          sources: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "url"], properties: { title: { type: "string" }, url: { type: "string" } } } },
+          queries: { type: "array", items: { type: "string" } },
+        },
+      };
+      const out = await cliCall<SpeakInput & { sources: Source[]; queries: string[] }>({
+        model: config.mkModel,
+        system: this.system,
+        user: `${prompt}\n\n(במקום לקרוא לכלי speak, החזר את אותם שדות כ-JSON. ב-sources שים מקורות שבדקת עכשיו, וב-queries את החיפושים שהרצת. אם לא חיפשת, השאר רשימות ריקות.)`,
+        schema,
+        web: true,
+        effort: config.speechEffort,
+      });
+      return this.toSpeech(out, out.sources ?? [], (out.queries ?? []).map((q) => `🔎 ${q}`));
+    }
     const { blocks } = await agentCall({
       model: config.mkModel,
       system: this.system,
-      user: speakPrompt({
-        topic: ctx.topic,
-        dossier: this.dossier?.notes ?? "(אין)",
-        privateLog: this.privateLog.slice(-10).join("\n"),
-        transcript: ctx.transcript,
-        stickReason: ctx.stickReason,
-        turnsLeft: ctx.turnsLeft,
-      }),
+      user: prompt,
       tools: [webSearchTool(2), speakTool(this.otherIds)],
       effort: config.speechEffort,
     });
     const call = blocks.find(
       (b): b is Anthropic.Beta.Messages.BetaToolUseBlock => b.type === "tool_use" && b.name === "speak",
     );
-    let out: {
-      speech: string;
-      addressed_to: string[];
-      tone: Tone;
-      stance: Stance;
-      inner_thought: string;
-      ready_to_vote: boolean;
-      proposed_resolution: string;
-    };
+    let out: SpeakInput;
     if (call) {
-      out = call.input as typeof out;
+      out = call.input as SpeakInput;
     } else {
       // The model answered in plain text instead of calling the tool: use the text as the speech.
       out = {
@@ -178,6 +232,10 @@ export class MKAgent {
         proposed_resolution: "",
       };
     }
+    return this.toSpeech(out, sourcesOf(blocks), searchQueriesOf(blocks));
+  }
+
+  private toSpeech(out: SpeakInput, sources: Source[], queries: string[]) {
     if (out.inner_thought) this.privateLog.push(`(כשדיברתי) ${out.inner_thought}`);
     return {
       mkId: this.profile.id,
@@ -188,8 +246,8 @@ export class MKAgent {
       innerThought: out.inner_thought,
       readyToVote: !!out.ready_to_vote,
       proposedResolution: out.proposed_resolution?.trim() ?? "",
-      sources: sourcesOf(blocks).slice(0, 6) as Source[],
-      queries: searchQueriesOf(blocks),
+      sources: sources.slice(0, 6),
+      queries,
     };
   }
 

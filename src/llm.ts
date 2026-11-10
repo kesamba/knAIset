@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import type { z } from "zod";
+import { z } from "zod";
+import { cliCall } from "./cli.js";
 import type { Source } from "./types.js";
 
 type BetaMessage = Anthropic.Beta.Messages.BetaMessage;
@@ -16,7 +17,17 @@ export const config = {
   reactionModel: process.env.REACTION_MODEL ?? "claude-haiku-5-5",
   speechEffort: (process.env.SPEECH_EFFORT ?? "medium") as Effort,
   researchEffort: (process.env.RESEARCH_EFFORT ?? "medium") as Effort,
-  mock: process.env.MOCK === "1",
+  /**
+   * api  = Anthropic SDK with ANTHROPIC_API_KEY
+   * cli  = Claude Code CLI (`claude -p`), uses the CLI's own login, no API key
+   * mock = canned demo content
+   */
+  backend: (process.env.MOCK === "1"
+    ? "mock"
+    : process.env.BACKEND ?? (process.env.ANTHROPIC_API_KEY ? "api" : "cli")) as "api" | "cli" | "mock",
+  get mock() {
+    return this.backend === "mock";
+  },
   reactions: process.env.REACTIONS !== "off",
   /** How many MK calls may run against the API at the same time. */
   concurrency: Number(process.env.CONCURRENCY ?? 4),
@@ -109,6 +120,17 @@ export async function structuredCall<S extends z.ZodType>(opts: {
   effort: Effort;
   maxTokens?: number;
 }): Promise<z.infer<S>> {
+  if (config.backend === "cli") {
+    const out = await cliCall<unknown>({
+      model: opts.model,
+      system: opts.system,
+      user: opts.user,
+      schema: z.toJSONSchema(opts.schema),
+      web: false,
+      effort: opts.effort,
+    });
+    return opts.schema.parse(out) as z.infer<S>;
+  }
   const msg = await client().beta.messages.parse({
     model: opts.model,
     max_tokens: opts.maxTokens ?? 8000,
