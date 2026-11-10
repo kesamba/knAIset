@@ -1,0 +1,33 @@
+{
+  "name": "knaiset",
+  "version": "1.0.0",
+  "description": "סימולציית כנסת: כל ראש מפלגה הוא סוכן Claude",
+  "scripts": {
+    "start": "tsx --env-file-if-exists=.env src/server.ts",
+    "demo": "MOCK=1 tsx --env-file-if-exists=.env src/server.ts",
+    "typecheck": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kesamba/knAIset.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kesamba/knAIset/issues"
+  },
+  "homepage": "https://github.com/kesamba/knAIset#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "type": "module"
+}

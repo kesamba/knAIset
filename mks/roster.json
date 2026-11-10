@@ -1,0 +1,18 @@
+{
+  "knesset": "הכנסת ה-26",
+  "asOf": "2026-11-10",
+  "note": "תוצאות סופיות של בחירות 27.10.2026 (ועדת הבחירות המרכזית). הרכב הקואליציה טרם נקבע — הסוכנים מחפשים את המצב העדכני בעצמם.",
+  "members": [
+    { "id": "netanyahu", "name": "בנימין נתניהו", "nameEn": "Benjamin Netanyahu", "party": "הליכוד", "partyEn": "Likud", "seats": 27, "bloc": "right", "color": "#1f4fa3", "emoji": "🦁" },
+    { "id": "eisenkot", "name": "גדי איזנקוט", "nameEn": "Gadi Eisenkot", "party": "ישר!", "partyEn": "Yashar", "seats": 21, "bloc": "center", "color": "#0e8f8f", "emoji": "🎖️" },
+    { "id": "bennett", "name": "נפתלי בנט", "nameEn": "Naftali Bennett", "party": "ביחד", "partyEn": "Together (Bennett 2026 + Yesh Atid)", "seats": 12, "bloc": "center", "color": "#2b2d42", "emoji": "🚀" },
+    { "id": "jabareen", "name": "יוסף ג'בארין", "nameEn": "Yousef Jabareen", "party": "הרשימה המשותפת", "partyEn": "Joint List (Hadash–Ta'al–Balad)", "seats": 11, "bloc": "arab", "color": "#2e8b57", "emoji": "⚖️" },
+    { "id": "golan", "name": "יאיר גולן", "nameEn": "Yair Golan", "party": "הדמוקרטים", "partyEn": "The Democrats", "seats": 8, "bloc": "left", "color": "#d62839", "emoji": "🌹" },
+    { "id": "abbas", "name": "מנסור עבאס", "nameEn": "Mansour Abbas", "party": "רע\"ם", "partyEn": "Ra'am (United Arab List)", "seats": 8, "bloc": "arab", "color": "#5a9e3a", "emoji": "🤝" },
+    { "id": "lieberman", "name": "אביגדור ליברמן", "nameEn": "Avigdor Lieberman", "party": "ישראל ביתנו", "partyEn": "Yisrael Beytenu", "seats": 7, "bloc": "center-right", "color": "#3a6ea5", "emoji": "🐻" },
+    { "id": "asher", "name": "יעקב אשר", "nameEn": "Ya'akov Asher", "party": "יהדות התורה", "partyEn": "United Torah Judaism", "seats": 7, "bloc": "haredi", "color": "#4a4a4a", "emoji": "📜" },
+    { "id": "bengvir", "name": "איתמר בן גביר", "nameEn": "Itamar Ben-Gvir", "party": "עוצמה יהודית", "partyEn": "Otzma Yehudit", "seats": 7, "bloc": "right", "color": "#e8a20c", "emoji": "🔥" },
+    { "id": "deri", "name": "אריה דרעי", "nameEn": "Aryeh Deri", "party": "ש\"ס", "partyEn": "Shas", "seats": 6, "bloc": "haredi", "color": "#1a1a6e", "emoji": "🕯️" },
+    { "id": "smotrich", "name": "בצלאל סמוטריץ'", "nameEn": "Bezalel Smotrich", "party": "הציונות הדתית", "partyEn": "Religious Zionism", "seats": 6, "bloc": "right", "color": "#6b8e23", "emoji": "🏔️" }
+  ]
+}

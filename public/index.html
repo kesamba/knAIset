@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>כנסת AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&family=Secular+One&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" id="homeLink"><span class="logo">🏛️</span> כנסת <b>AI</b></a>
+    <span class="badge" id="modeBadge" hidden>מצב דמו</span>
+    <nav>
+      <button class="ghost" id="historyBtn">📚 דיונים קודמים</button>
+    </nav>
+  </header>
+
+  <!-- ============ START ============ -->
+  <main id="startView" class="view">
+    <section class="hero card">
+      <h1>מה על סדר היום?</h1>
+      <p class="muted">כל ראש מפלגה הוא סוכן Claude נפרד. לפני הדיון כל אחד מהם חוקר את הנושא בעצמו, ואחר כך הם מדברים לפי תור עם מקל דיבור. כולם שומעים הכול, חושבים בשקט, צועקים קריאות ביניים, ובסוף מצביעים.</p>
+      <form id="startForm">
+        <textarea id="topicInput" rows="2" placeholder="למשל: חוק גיוס לבני ישיבות" required></textarea>
+        <div class="chips" id="topicChips"></div>
+        <details class="advanced">
+          <summary>הגדרות מתקדמות</summary>
+          <label class="row">מספר נאומים מקסימלי לפני הצבעה: <input type="number" id="maxTurns" min="3" max="60" value="22" /></label>
+          <p class="muted small">מי משתתף? (לחיצה מוציאה או מכניסה)</p>
+          <div class="member-pick" id="memberPick"></div>
+        </details>
+        <button class="primary big" type="submit">🔔 פתיחת הישיבה</button>
+      </form>
+    </section>
+    <p class="disclaimer">⚠️ זו סימולציה סאטירית שנוצרת על ידי בינה מלאכותית. הנאומים לא אמיתיים, ואין לייחס אותם לאנשים האמיתיים.</p>
+  </main>
+
+  <!-- ============ LIVE ============ -->
+  <main id="liveView" class="view" hidden>
+    <div class="topic-bar">
+      <div>
+        <div class="muted small" id="phaseLabel">מחקר מקדים</div>
+        <h2 id="topicTitle"></h2>
+      </div>
+      <div class="controls" id="liveControls">
+        <button id="pauseBtn" class="ghost">⏸️ השהיה</button>
+        <button id="voteBtn" class="danger">🗳️ להצבעה!</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <section class="plenum-wrap card">
+        <div class="plenum" id="plenum">
+          <svg class="links" id="linksSvg" preserveAspectRatio="none"></svg>
+          <div class="podium" id="podium">
+            <div class="podium-name" id="podiumName">הישיבה נפתחת…</div>
+            <div class="podium-text" id="podiumText"></div>
+          </div>
+          <div class="stick" id="stick" title="מקל הדיבור">🎤</div>
+        </div>
+        <div class="chair-bar" id="chairBar">
+          <input id="chairInput" placeholder="הערת יו״ר (כל הח״כים ישמעו)…" />
+          <button id="chairSend" class="ghost">🔔 שליחה</button>
+        </div>
+        <p class="muted small center">💡 לחיצה על ח״כ פותחת את תיק המודיעין שלו ואת המחשבות שלו, וממנה אפשר להעביר אליו את המקל.</p>
+      </section>
+
+      <aside class="feed card">
+        <div class="feed-head">
+          <h3>📜 פרוטוקול</h3>
+          <label class="toggle"><input type="checkbox" id="thoughtsToggle" checked /> 🧠 מחשבות פרטיות</label>
+        </div>
+        <div class="feed-list" id="feed"></div>
+      </aside>
+    </div>
+
+    <section id="voteSection" class="card vote-card" hidden>
+      <h2>🗳️ הצבעה</h2>
+      <blockquote id="resolutionText"></blockquote>
+      <div class="seatbar" id="seatBar"></div>
+      <div class="vote-grid" id="voteGrid"></div>
+      <div class="stamp" id="stamp" hidden></div>
+      <p class="summary" id="summaryText"></p>
+      <div class="center"><button class="primary" id="analysisBtn" hidden>📊 איך התנהל הדיון?</button></div>
+    </section>
+  </main>
+
+  <!-- ============ ANALYSIS ============ -->
+  <main id="analysisView" class="view" hidden>
+    <div class="topic-bar">
+      <div>
+        <div class="muted small">ניתוח הדיון</div>
+        <h2 id="anTopic"></h2>
+      </div>
+      <div class="controls">
+        <button class="ghost" id="replayBtn">▶️ שידור חוזר</button>
+        <button class="ghost" id="backToLive">↩️ חזרה למליאה</button>
+      </div>
+    </div>
+    <div class="stats" id="statCards"></div>
+    <div class="an-grid">
+      <section class="card">
+        <h3>🕸️ מי תקף את מי</h3>
+        <p class="muted small">קו הוא פנייה ישירה בנאום, ועוביו לפי מספר הפניות. קו מקווקו הוא קריאת ביניים.</p>
+        <div class="plenum mini" id="anPlenum"><svg class="links" id="anLinks" preserveAspectRatio="none"></svg></div>
+      </section>
+      <section class="card">
+        <h3>🎭 ציר הזמן של הדיון</h3>
+        <div class="timeline" id="timeline"></div>
+      </section>
+      <section class="card">
+        <h3>🗣️ זמן דיבור (מילים)</h3>
+        <div id="airtime"></div>
+      </section>
+      <section class="card">
+        <h3>🧭 שינויי עמדה</h3>
+        <div id="stances"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ============ HISTORY / MK MODALS ============ -->
+  <dialog id="historyDialog" class="modal">
+    <h3>📚 דיונים קודמים</h3>
+    <div id="historyList"></div>
+    <form method="dialog"><button class="ghost">סגירה</button></form>
+  </dialog>
+
+  <dialog id="mkDialog" class="modal wide">
+    <div id="mkDialogBody"></div>
+    <form method="dialog" class="row-end">
+      <button class="primary" id="giveStickBtn" value="stick">🎤 העבר את המקל</button>
+      <button class="ghost">סגירה</button>
+    </form>
+  </dialog>
+
+  <dialog id="voteDialog" class="modal">
+    <h3>🗳️ קריאה להצבעה</h3>
+    <p class="muted small">אפשר לנסח הצעה בעצמכם, או להשאיר את השדה ריק ולתת למזכירות לנסח אותה מתוך הדיון.</p>
+    <textarea id="customResolution" rows="3" placeholder="הכנסת מחליטה…"></textarea>
+    <form method="dialog" class="row-end">
+      <button class="danger" value="go">להצבעה</button>
+      <button class="ghost" value="cancel">ביטול</button>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
