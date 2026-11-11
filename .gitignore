@@ -4,3 +4,4 @@ data/research-cache/
 .env
 dist/
 data/cli-work/
+data/dynamics.json
