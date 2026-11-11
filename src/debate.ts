@@ -321,7 +321,16 @@ export class Debate extends EventEmitter {
     this.setPhase("voting");
     const transcript = this.transcript();
     const proposals = this.speeches.map((s) => s.proposedResolution).filter(Boolean);
-    const resolution = this.voteRequest?.resolution ?? (await draftResolution(this.topic, transcript, proposals));
+    let resolution = this.voteRequest?.resolution;
+    if (!resolution) {
+      try {
+        resolution = await draftResolution(this.topic, transcript, proposals);
+      } catch (err) {
+        // Don't lose the whole session over the motion text: fall back to a member's proposal or a generic one.
+        this.emitEvent("agent_error", { mkId: "chair", stage: "resolution", message: String((err as Error).message ?? err) });
+        resolution = proposals.at(-1) ?? `הכנסת מחליטה לאמץ את ההצעה שעל סדר היום בנושא "${this.topic}".`;
+      }
+    }
     this.emitEvent("vote_called", { resolution, reason: this.voteRequest?.reason ?? "" });
 
     const ballots: Ballot[] = [];
