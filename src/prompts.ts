@@ -46,8 +46,14 @@ ${p.dynamics}
 ${p.guide}`;
 }
 
-export function researchPrompt(mk: MKProfile, topic: string): string {
-  return `נפתח דיון חדש במליאה. הנושא: **"${topic}"**.
+function taskBlock(task: string): string {
+  return task
+    ? `\n\n📝 **מטלת היו"ר לדיון הזה:** "${task}"\nבסוף הדיון המזכירות תכתוב מסמך שעונה על המטלה, לפי מה שנאמר בדיון ולפי ההצעות הקונקרטיות שלכם, והמליאה תצביע אם לאמץ אותו.`
+    : "";
+}
+
+export function researchPrompt(mk: MKProfile, topic: string, task = ""): string {
+  return `נפתח דיון חדש במליאה. הנושא: **"${topic}"**.${taskBlock(task)}
 
 לפני שהדיון מתחיל, הכן את עצמך לפי מדריך המחקר. עד 8 חיפושים או קריאות עמוד:
 1. מה המצב הפוליטי העדכני שלך (קואליציה, תפקיד, כותרות מהשבועיים האחרונים)?
@@ -80,6 +86,7 @@ export function formatTranscript(
     lines.push(
       `[${s.index + 1}] **${mk.name}** (${mk.party}) · טון: ${TONE_HE[s.tone] ?? s.tone}${to ? ` · פונה אל: ${to}` : ""}\n${s.text}`,
     );
+    if (s.docContribution) lines.push(`   📝 מבקש להכניס למסמך: ${s.docContribution}`);
     const heckles = reactions.filter((r) => r.speechId === s.id && r.heckle);
     for (const h of heckles) lines.push(`   📢 קריאת ביניים מ${byId.get(h.mkId)?.name}: "${h.heckle}"`);
     for (const n of chairNotes.filter((c) => c.afterIndex === s.index)) lines.push(`🔔 היו"ר: ${n.text}`);
@@ -94,8 +101,17 @@ export function speakPrompt(p: {
   transcript: string;
   stickReason: string;
   turnsLeft: number;
+  task?: string;
+  allowSearch?: boolean;
 }): string {
-  return `# נושא הדיון: "${p.topic}"
+  const search =
+    p.allowSearch === false
+      ? "בתור הזה אין חיפוש ברשת. תסתמך על תיק המודיעין שלך. **סיים בקריאה אחת לכלי \`speak\`** עם הנאום."
+      : "אם אתה צריך עובדה טרייה כדי לענות למישהו, מותר לך עד חיפוש אחד או שניים. אחר כך **חובה לסיים בקריאה אחת לכלי \`speak\`** עם הנאום.";
+  const task = p.task
+    ? `\n📝 זכור את מטלת היו"ר. ב-doc_contribution כתוב מה **בדיוק** אתה רוצה שייכנס למסמך: סעיף, צעד, מספר, ניסוח או הסתייגות (עד 60 מילים, בסגנון ענייני). אם אין לך מה להוסיף הפעם, השאר ריק.`
+    : "";
+  return `# נושא הדיון: "${p.topic}"${taskBlock(p.task ?? "")}
 
 ## תיק המודיעין שלך (מהמחקר בתחילת הדיון)
 ${p.dossier}
@@ -108,8 +124,8 @@ ${p.transcript}
 
 ---
 🎤 **מקל הדיבור אצלך** (${p.stickReason}). נשארו בערך ${p.turnsLeft} תורות עד ההצבעה.
-אם אתה צריך עובדה טרייה כדי לענות למישהו, מותר לך עד חיפוש אחד או שניים. אחר כך **חובה לסיים בקריאה אחת לכלי \`speak\`** עם הנאום.
-הנאום הוא 50 עד 170 מילים, בגוף ראשון ובסגנון שלך. הוא חייב להגיב לפחות לאחד הדוברים הקודמים (אלא אם אתה הראשון).`;
+${search}
+הנאום הוא 50 עד 170 מילים, בגוף ראשון ובסגנון שלך. הוא חייב להגיב לפחות לאחד הדוברים הקודמים (אלא אם אתה הראשון).${task}`;
 }
 
 export function reactionPrompt(p: {
@@ -144,7 +160,11 @@ export function votePrompt(p: {
   resolution: string;
   dossier: string;
   privateLog: string;
+  document?: string;
 }): string {
+  const doc = p.document
+    ? `\n\n## המסמך שהמזכירות ניסחה מתוך הדיון (עליו מצביעים)\n${p.document.slice(0, 14000)}`
+    : "";
   return `# נושא הדיון: "${p.topic}"
 
 ## פרוטוקול הדיון
@@ -154,7 +174,7 @@ ${p.transcript}
 ${p.dossier}
 
 ## המחשבות שלך במהלך הדיון
-${p.privateLog || "(אין)"}
+${p.privateLog || "(אין)"}${doc}
 
 ---
 🗳️ **היו"ר העלה להצבעה את ההצעה הבאה:**
@@ -196,4 +216,34 @@ ${voteText}
 כתוב:
 - summary: סיכום עיתונאי קליל של הדיון, 80 עד 140 מילים. מה קרה, מי בלט, מה היה הרגע הדרמטי ואיך זה נגמר.
 - highlights: 2 עד 6 רגעים בין-אישיים שכדאי לזכור לדיונים הבאים (עלבון, ברית מפתיעה, ויכוח, מחמאה). לכל רגע, between הוא רשימת מזהי ח"כים (מהרשימה למעלה) ו-event הוא תיאור במשפט אחד.`;
+}
+
+export function documentPrompt(p: {
+  topic: string;
+  task: string;
+  transcript: string;
+  contributions: string;
+  seats: string;
+}): string {
+  return `נושא הדיון: "${p.topic}"
+
+📝 **מטלת היו"ר:** "${p.task}"
+
+גודל הסיעות (מנדטים): ${p.seats}
+
+פרוטוקול הדיון:
+${p.transcript}
+
+הצעות קונקרטיות שחברי הכנסת ביקשו להכניס למסמך:
+${p.contributions || "(אין)"}
+
+---
+אתה ועדת הניסוח של הכנסת. כתוב את המסמך שעונה על מטלת היו"ר, **בדיוק בפורמט, באורך ובמבנה שהיו"ר ביקש** (אם לא נאמר, מסמך מסודר של 400 עד 900 מילים).
+- title: כותרת קצרה למסמך.
+- markdown: גוף המסמך ב-Markdown (כותרות ##, רשימות, טבלאות אם מתאים). בלי כותרת # ראשית, היא תתווסף לבד.
+כללים:
+- התוכן בא מהדיון. כשיש מחלוקת, תלך עם העמדה שיש מאחוריה רוב מנדטים בדיון, וציין בסעיף "## מחלוקות והסתייגויות" מי חולק ועל מה.
+- ייחס רעיונות לסיעות כשזה מועיל ("לפי הצעת ש\"ס…").
+- אל תמציא נתונים שלא עלו בדיון. אם חסר נתון, כתוב שצריך להשלים אותו.
+- בעברית תקנית ועניינית, בלי הרטוריקה והעקיצות של הדיון.`;
 }

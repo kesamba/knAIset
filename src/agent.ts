@@ -34,7 +34,7 @@ function speakTool(memberIds: string[]): Anthropic.Beta.Messages.BetaTool {
     input_schema: {
       type: "object",
       additionalProperties: false,
-      required: ["speech", "addressed_to", "tone", "stance", "inner_thought", "ready_to_vote", "proposed_resolution"],
+      required: ["speech", "addressed_to", "tone", "stance", "inner_thought", "ready_to_vote", "proposed_resolution", "doc_contribution"],
       properties: {
         speech: { type: "string", description: "הנאום עצמו, בעברית ובגוף ראשון, 50–170 מילים." },
         addressed_to: {
@@ -53,6 +53,10 @@ function speakTool(memberIds: string[]): Anthropic.Beta.Messages.BetaTool {
           type: "string",
           description: "אם אתה רוצה להציע נוסח החלטה להצבעה, כתוב אותו כאן ('הכנסת מחליטה…'). אחרת, מחרוזת ריקה.",
         },
+        doc_contribution: {
+          type: "string",
+          description: "רק כשיש מטלת יו\"ר: מה בדיוק אתה רוצה שייכנס למסמך (סעיף, צעד, מספר או הסתייגות). אחרת, מחרוזת ריקה.",
+        },
       },
     },
   };
@@ -66,6 +70,7 @@ interface SpeakInput {
   inner_thought: string;
   ready_to_vote: boolean;
   proposed_resolution: string;
+  doc_contribution?: string;
 }
 
 const CLI_RESEARCH_SCHEMA = {
@@ -102,6 +107,10 @@ export interface SpeakContext {
   turnsLeft: number;
   previousSpeeches: Speech[];
   names: Record<string, string>;
+  /** The chair's demand, if this session must produce a document. */
+  task: string;
+  /** Fast mode turns off web search while speaking (research is already done). */
+  allowSearch: boolean;
 }
 
 export class MKAgent {
@@ -129,14 +138,14 @@ export class MKAgent {
     this.reactionSystem = mkSystemPrompt({ mk: profile, persona, relationships, dynamics, guide: "(לא רלוונטי בהקשבה)", knessetNote });
   }
 
-  private cacheFile(topic: string) {
-    const h = crypto.createHash("sha1").update(`${TODAY}|${topic}`).digest("hex").slice(0, 12);
+  private cacheFile(topic: string, task: string) {
+    const h = crypto.createHash("sha1").update(`${TODAY}|${topic}${task ? `|${task}` : ""}`).digest("hex").slice(0, 12);
     return path.join(CACHE_DIR, `${this.profile.id}-${h}.json`);
   }
 
   /** Research phase: the agent searches the web for itself and builds a dossier. */
-  async research(topic: string, onProgress: (queries: string[]) => void): Promise<Dossier> {
-    const file = this.cacheFile(topic);
+  async research(topic: string, task: string, onProgress: (queries: string[]) => void): Promise<Dossier> {
+    const file = this.cacheFile(topic, task);
     if (!config.mock && fs.existsSync(file)) {
       this.dossier = { ...JSON.parse(fs.readFileSync(file, "utf8")), fromCache: true };
       return this.dossier!;
@@ -149,7 +158,7 @@ export class MKAgent {
       const r = await cliCall<{ dossier: string; sources: Source[]; queries: string[] }>({
         model: config.mkModel,
         system: this.system,
-        user: `${researchPrompt(this.profile, topic)}\n\nהחזר JSON: dossier הוא תיק המודיעין, sources הם המקורות שבאמת קראת (title, url), ו-queries הן השאילתות שהרצת.`,
+        user: `${researchPrompt(this.profile, topic, task)}\n\nהחזר JSON: dossier הוא תיק המודיעין, sources הם המקורות שבאמת קראת (title, url), ו-queries הן השאילתות שהרצת.`,
         schema: CLI_RESEARCH_SCHEMA,
         web: true,
         effort: config.researchEffort,
@@ -163,7 +172,7 @@ export class MKAgent {
     const { blocks } = await agentCall({
       model: config.mkModel,
       system: this.system,
-      user: researchPrompt(this.profile, topic),
+      user: researchPrompt(this.profile, topic, task),
       tools: [webSearchTool(6), webFetchTool(3)],
       effort: config.researchEffort,
     });
@@ -185,6 +194,8 @@ export class MKAgent {
       transcript: ctx.transcript,
       stickReason: ctx.stickReason,
       turnsLeft: ctx.turnsLeft,
+      task: ctx.task,
+      allowSearch: ctx.allowSearch,
     });
     if (config.backend === "cli") {
       const tool = speakTool(this.otherIds);
@@ -202,7 +213,7 @@ export class MKAgent {
         system: this.system,
         user: `${prompt}\n\n(במקום לקרוא לכלי speak, החזר את אותם שדות כ-JSON. ב-sources שים מקורות שבדקת עכשיו, וב-queries את החיפושים שהרצת. אם לא חיפשת, השאר רשימות ריקות.)`,
         schema,
-        web: true,
+        web: ctx.allowSearch,
         effort: config.speechEffort,
       });
       return this.toSpeech(out, out.sources ?? [], (out.queries ?? []).map((q) => `🔎 ${q}`));
@@ -211,7 +222,7 @@ export class MKAgent {
       model: config.mkModel,
       system: this.system,
       user: prompt,
-      tools: [webSearchTool(2), speakTool(this.otherIds)],
+      tools: ctx.allowSearch ? [webSearchTool(2), speakTool(this.otherIds)] : [speakTool(this.otherIds)],
       effort: config.speechEffort,
     });
     const call = blocks.find(
@@ -230,6 +241,7 @@ export class MKAgent {
         inner_thought: "",
         ready_to_vote: false,
         proposed_resolution: "",
+        doc_contribution: "",
       };
     }
     return this.toSpeech(out, sourcesOf(blocks), searchQueriesOf(blocks));
@@ -246,6 +258,7 @@ export class MKAgent {
       innerThought: out.inner_thought,
       readyToVote: !!out.ready_to_vote,
       proposedResolution: out.proposed_resolution?.trim() ?? "",
+      docContribution: out.doc_contribution?.trim() ?? "",
       sources: sources.slice(0, 6),
       queries,
     };
@@ -287,7 +300,7 @@ export class MKAgent {
     };
   }
 
-  async vote(topic: string, transcript: string, resolution: string): Promise<Ballot> {
+  async vote(topic: string, transcript: string, resolution: string, document?: string): Promise<Ballot> {
     if (config.mock) return mock.vote(this.profile, resolution);
     const b = await structuredCall({
       model: config.mkModel,
@@ -298,6 +311,7 @@ export class MKAgent {
         resolution,
         dossier: this.dossier?.notes ?? "(אין)",
         privateLog: this.privateLog.slice(-12).join("\n"),
+        document,
       }),
       schema: BallotSchema,
       effort: "low",

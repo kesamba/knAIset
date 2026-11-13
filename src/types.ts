@@ -52,6 +52,8 @@ export interface Speech {
   at: string;
   /** Who handed over the stick and why */
   stickReason: string;
+  /** Chair's-task mode: concrete text this MK wants in the final document. */
+  docContribution?: string;
 }
 
 export interface Reaction {
@@ -88,7 +90,16 @@ export interface Dossier {
   fromCache: boolean;
 }
 
-export type Phase = "research" | "debate" | "voting" | "done" | "error";
+export type Phase = "research" | "debate" | "drafting" | "voting" | "done" | "error";
+
+/** Chair's-task mode: the Markdown document the Knesset produced. */
+export interface KnessetDocument {
+  title: string;
+  /** The body the secretariat drafted from the debate (what the MKs voted on). */
+  body: string;
+  /** Full file: header + body + vote record + summary + contributions. */
+  markdown: string;
+}
 
 export interface SessionSnapshot {
   id: string;
@@ -96,6 +107,11 @@ export interface SessionSnapshot {
   createdAt: string;
   phase: Phase;
   mock: boolean;
+  /** The chair's demand (chair's-task mode), or "" for a plain debate. */
+  task: string;
+  /** Fast mode: the UI skips the live debate and jumps to the result. */
+  fast: boolean;
+  document: KnessetDocument | null;
   members: MKProfile[];
   dossiers: Record<string, Dossier>;
   speeches: Speech[];

@@ -4,13 +4,14 @@ import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
 import Anthropic from "@anthropic-ai/sdk";
 import { MKAgent } from "./agent.js";
-import { draftResolution, summarize } from "./chair.js";
+import { draftDocument, draftResolution, summarize } from "./chair.js";
 import { config, pool } from "./llm.js";
 import { formatTranscript } from "./prompts.js";
 import { appendDynamics, loadRoster } from "./roster.js";
 import type {
   Ballot,
   GameEvent,
+  KnessetDocument,
   MKProfile,
   Phase,
   Reaction,
@@ -21,6 +22,7 @@ import type {
 } from "./types.js";
 
 const SESSIONS_DIR = path.join(process.cwd(), "data", "sessions");
+const DOCS_DIR = path.join(process.cwd(), "data", "documents");
 const MAX_HECKLES_PER_SPEECH = 2;
 
 export interface DebateOptions {
@@ -28,6 +30,10 @@ export interface DebateOptions {
   maxTurns?: number;
   /** Subset of MK ids to seat (default: all party heads). */
   memberIds?: string[];
+  /** Chair's demand: the session ends with a Markdown document that answers it. */
+  task?: string;
+  /** Fast mode: no web search while speaking; the UI skips straight to the result. */
+  fast?: boolean;
 }
 
 export class Debate extends EventEmitter {
@@ -36,6 +42,8 @@ export class Debate extends EventEmitter {
   readonly createdAt = new Date().toISOString();
   readonly members: MKProfile[];
   readonly maxTurns: number;
+  readonly task: string;
+  readonly fast: boolean;
   private agents: Map<string, MKAgent>;
 
   phase: Phase = "research";
@@ -45,6 +53,7 @@ export class Debate extends EventEmitter {
   events: GameEvent[] = [];
   stickHolder: string | null = null;
   vote: VoteResult | null = null;
+  document: KnessetDocument | null = null;
 
   private paused = false;
   private resumeWaiters: (() => void)[] = [];
@@ -57,6 +66,8 @@ export class Debate extends EventEmitter {
     super();
     this.id = `${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(3).toString("hex")}`;
     this.topic = opts.topic.trim();
+    this.task = opts.task?.trim() ?? "";
+    this.fast = !!opts.fast;
     const roster = loadRoster();
     this.members = roster.members.filter((m) => !opts.memberIds?.length || opts.memberIds.includes(m.id));
     this.maxTurns = opts.maxTurns ?? Math.max(12, this.members.length * 2);
@@ -81,6 +92,9 @@ export class Debate extends EventEmitter {
       createdAt: this.createdAt,
       phase: this.phase,
       mock: config.mock,
+      task: this.task,
+      fast: this.fast,
+      document: this.document,
       members: this.members,
       dossiers: Object.fromEntries(
         [...this.agents.values()].filter((a) => a.dossier).map((a) => [a.profile.id, a.dossier!]),
@@ -145,7 +159,14 @@ export class Debate extends EventEmitter {
   // ---------- main loop ----------
 
   async run() {
-    this.emitEvent("session_started", { topic: this.topic, members: this.members.map((m) => m.id), mock: config.mock });
+    this.emitEvent("session_started", {
+      topic: this.topic,
+      task: this.task,
+      fast: this.fast,
+      maxTurns: this.maxTurns,
+      members: this.members.map((m) => m.id),
+      mock: config.mock,
+    });
     try {
       await this.researchPhase();
       await this.debatePhase();
@@ -177,7 +198,7 @@ export class Debate extends EventEmitter {
       const mkId = agent.profile.id;
       this.emitEvent("research_started", { mkId });
       try {
-        const d = await agent.research(this.topic, (queries) => this.emitEvent("research_progress", { mkId, queries }));
+        const d = await agent.research(this.topic, this.task, (queries) => this.emitEvent("research_progress", { mkId, queries }));
         this.emitEvent("research_done", { mkId, dossier: d });
       } catch (err) {
         if (err instanceof Anthropic.AuthenticationError) throw err;
@@ -211,6 +232,8 @@ export class Debate extends EventEmitter {
           turnsLeft: this.maxTurns - this.speeches.length,
           previousSpeeches: this.speeches,
           names,
+          task: this.task,
+          allowSearch: !this.fast,
         });
         if (out.queries.length) this.emitEvent("speaker_searched", { mkId, queries: out.queries });
         const { queries: _q, ...rest } = out;
@@ -317,11 +340,38 @@ export class Debate extends EventEmitter {
     }
   }
 
+  /** Chair's-task mode: the drafting committee writes the requested document from the debate. */
+  private async draftPhase(transcript: string): Promise<{ title: string; body: string } | null> {
+    this.setPhase("drafting");
+    this.emitEvent("document_drafting", { task: this.task });
+    const contributions = this.speeches
+      .filter((s) => s.docContribution)
+      .map((s) => `- ${this.members.find((m) => m.id === s.mkId)!.name} (${this.members.find((m) => m.id === s.mkId)!.party}): ${s.docContribution}`)
+      .join("\n");
+    try {
+      const d = await draftDocument({
+        topic: this.topic,
+        task: this.task,
+        transcript,
+        contributions,
+        seats: this.members.map((m) => `${m.party} ${m.seats}`).join(", "),
+      });
+      const draft = { title: d.title.trim(), body: d.markdown.trim() };
+      this.emitEvent("document_drafted", draft);
+      return draft;
+    } catch (err) {
+      this.emitEvent("agent_error", { mkId: "chair", stage: "document", message: String((err as Error).message ?? err) });
+      return null;
+    }
+  }
+
   private async votePhase() {
-    this.setPhase("voting");
     const transcript = this.transcript();
+    const draft = this.task ? await this.draftPhase(transcript) : null;
+    this.setPhase("voting");
     const proposals = this.speeches.map((s) => s.proposedResolution).filter(Boolean);
     let resolution = this.voteRequest?.resolution;
+    if (!resolution && draft) resolution = `הכנסת מאמצת את המסמך "${draft.title}" כמענה למטלת היו"ר.`;
     if (!resolution) {
       try {
         resolution = await draftResolution(this.topic, transcript, proposals);
@@ -337,7 +387,7 @@ export class Debate extends EventEmitter {
     await pool([...this.agents.values()], config.concurrency, async (agent) => {
       let b: Ballot;
       try {
-        b = await agent.vote(this.topic, transcript, resolution);
+        b = await agent.vote(this.topic, transcript, resolution, draft?.body);
       } catch (err) {
         if (err instanceof Anthropic.AuthenticationError) throw err;
         b = { mkId: agent.profile.id, vote: "abstain", explanation: "(לא הצביע: תקלה טכנית)" };
@@ -376,17 +426,72 @@ export class Debate extends EventEmitter {
     } catch (err) {
       this.emitEvent("agent_error", { mkId: "chair", stage: "summary", message: String((err as Error).message ?? err) });
     }
+
+    if (draft) {
+      this.document = { ...draft, markdown: this.documentMarkdown(draft) };
+      fs.mkdirSync(DOCS_DIR, { recursive: true });
+      fs.writeFileSync(path.join(DOCS_DIR, `${this.id}.md`), this.document.markdown);
+      this.emitEvent("document_ready", { document: this.document });
+    }
+  }
+
+  /** The downloadable file: the drafted body plus the plenum's record of how it got there. */
+  private documentMarkdown(draft: { title: string; body: string }): string {
+    const v = this.vote!;
+    const mk = (id: string) => this.members.find((m) => m.id === id)!;
+    const VOTE = { for: "בעד", against: "נגד", abstain: "נמנע" } as const;
+    const cell = (t: string) => t.replace(/\|/g, "\\|").replace(/\n/g, " ");
+    const contributions = this.speeches.filter((s) => s.docContribution);
+    return [
+      `# ${draft.title}`,
+      "",
+      `> מסמך שהופק בסימולציה של מליאת הכנסת (כנסת AI). הוא נכתב על ידי סוכני AI, ואין לייחס אותו לאנשים האמיתיים.`,
+      "",
+      `- **מטלת היו"ר:** ${this.task}`,
+      `- **נושא הדיון:** ${this.topic}`,
+      `- **תאריך:** ${this.createdAt.slice(0, 10)} · ${this.speeches.length} נאומים · ישיבה \`${this.id}\``,
+      `- **סטטוס:** ${v.passed ? "✅ אומץ על ידי המליאה" : "❌ לא אומץ על ידי המליאה"} (בעד ${v.bySeats.for} · נגד ${v.bySeats.against} · נמנעים ${v.bySeats.abstain} מנדטים)`,
+      "",
+      "---",
+      "",
+      draft.body,
+      "",
+      "---",
+      "",
+      "## נספח א': ההצבעה במליאה",
+      "",
+      `**ההצעה:** ${v.resolution}`,
+      "",
+      "| ח\"כ | סיעה | מנדטים | הצבעה | הסבר |",
+      "|---|---|---|---|---|",
+      ...v.ballots.map((b) => `| ${mk(b.mkId).name} | ${mk(b.mkId).party} | ${mk(b.mkId).seats} | ${VOTE[b.vote]} | ${cell(b.explanation)} |`),
+      "",
+      `**לפי מנדטים:** בעד ${v.bySeats.for}, נגד ${v.bySeats.against}, נמנעים ${v.bySeats.abstain}. **לפי ראשי מפלגות:** ${v.byHeads.for}–${v.byHeads.against}–${v.byHeads.abstain}.`,
+      ...(v.summary ? ["", "## נספח ב': איך התנהל הדיון", "", v.summary] : []),
+      ...(contributions.length
+        ? ["", "## נספח ג': ההצעות שחברי הכנסת ביקשו להכניס", "", ...contributions.map((s) => `- **${mk(s.mkId).name}** (נאום #${s.index + 1}): ${s.docContribution}`)]
+        : []),
+      "",
+    ].join("\n");
   }
 }
 
-export function listSavedSessions(): { id: string; topic: string; createdAt: string; phase: Phase; passed?: boolean }[] {
+export function listSavedSessions(): {
+  id: string;
+  topic: string;
+  createdAt: string;
+  phase: Phase;
+  passed?: boolean;
+  fast?: boolean;
+  hasDocument?: boolean;
+}[] {
   if (!fs.existsSync(SESSIONS_DIR)) return [];
   return fs
     .readdirSync(SESSIONS_DIR)
     .filter((f) => f.endsWith(".json"))
     .map((f) => {
       const s = JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, f), "utf8")) as SessionSnapshot;
-      return { id: s.id, topic: s.topic, createdAt: s.createdAt, phase: s.phase, passed: s.vote?.passed };
+      return { id: s.id, topic: s.topic, createdAt: s.createdAt, phase: s.phase, passed: s.vote?.passed, fast: !!s.fast, hasDocument: !!s.document };
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

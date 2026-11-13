@@ -26,6 +26,13 @@
       <form id="startForm">
         <textarea id="topicInput" rows="2" placeholder="למשל: חוק גיוס לבני ישיבות" required></textarea>
         <div class="chips" id="topicChips"></div>
+        <div class="mode-box">
+          <label class="mode-label" for="taskInput">📝 מטלת יו״ר <span class="muted small">(לא חובה)</span></label>
+          <textarea id="taskInput" rows="2" placeholder="למשל: הגישו מסמך מדיניות של עד עמוד, עם 5 צעדים מעשיים, לוח זמנים ועלות משוערת"></textarea>
+          <p class="muted small">אם תכתבו מטלה, המזכירות תכתוב בסוף הדיון מסמך Markdown שעונה עליה, והמליאה תצביע אם לאמץ אותו. את המסמך אפשר להוריד.</p>
+          <div class="chips" id="taskChips"></div>
+          <label class="toggle fast-toggle"><input type="checkbox" id="fastInput" /> ⚡ <b>מצב מהיר:</b> לדלג על הדיון ולקפוץ ישר לתוצאה. אפשר לחזור ולראות את כל הדיון אחר כך.</label>
+        </div>
         <details class="advanced">
           <summary>הגדרות מתקדמות</summary>
           <label class="row">מספר נאומים מקסימלי לפני הצבעה: <input type="number" id="maxTurns" min="3" max="60" value="22" /></label>
@@ -84,7 +91,74 @@
       <div class="vote-grid" id="voteGrid"></div>
       <div class="stamp" id="stamp" hidden></div>
       <p class="summary" id="summaryText"></p>
-      <div class="center"><button class="primary" id="analysisBtn" hidden>📊 איך התנהל הדיון?</button></div>
+      <div class="center controls center-row">
+        <button class="primary" id="analysisBtn" hidden>📊 איך התנהל הדיון?</button>
+        <button class="ghost" id="resultBtn" hidden>📄 לעמוד התוצאה</button>
+      </div>
+    </section>
+
+    <section id="docSection" class="card doc-card" hidden>
+      <div class="doc-head">
+        <h3 id="docHeading">📄 המסמך</h3>
+        <div class="controls">
+          <button class="ghost" data-copy-doc>📋 העתקה</button>
+          <a class="button primary" data-download-doc download>⬇️ הורדת קובץ md</a>
+        </div>
+      </div>
+      <article class="md" id="liveDoc"></article>
+    </section>
+  </main>
+
+  <!-- ============ FAST (progress only) ============ -->
+  <main id="fastView" class="view" hidden>
+    <section class="card fast-card">
+      <div class="fast-gavel" id="fastIcon">⚡</div>
+      <h2 id="fastTopic"></h2>
+      <p class="muted" id="fastTask"></p>
+      <div class="fast-steps" id="fastSteps"></div>
+      <div class="progress"><div id="fastBar"></div></div>
+      <p class="fast-ticker" id="fastTicker">הישיבה נפתחת…</p>
+      <div class="controls center-row">
+        <button class="ghost" id="fastWatch">👀 לצפות בדיון בזמן אמת</button>
+        <button class="danger" id="fastVote">🗳️ לקצר ולעבור להצבעה</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ RESULT ============ -->
+  <main id="resultView" class="view" hidden>
+    <div class="topic-bar">
+      <div>
+        <div class="muted small">תוצאת הישיבה</div>
+        <h2 id="resTopic"></h2>
+      </div>
+      <div class="controls">
+        <button class="primary" id="resWatch">🎬 לראות את הדיון</button>
+        <button class="ghost" id="resReplay">▶️ שידור חוזר</button>
+        <button class="ghost" id="resAnalysis">📊 ניתוח</button>
+      </div>
+    </div>
+    <section class="card vote-card">
+      <p class="muted" id="resTask"></p>
+      <div class="stamp" id="resStamp"></div>
+      <blockquote id="resResolution"></blockquote>
+      <div class="seatbar" id="resSeatBar"></div>
+      <div class="muted small" id="resSeatNote"></div>
+      <p class="summary" id="resSummary"></p>
+    </section>
+    <section class="card doc-card" id="resDocCard" hidden>
+      <div class="doc-head">
+        <h3>📄 המסמך</h3>
+        <div class="controls">
+          <button class="ghost" data-copy-doc>📋 העתקה</button>
+          <a class="button primary" data-download-doc download>⬇️ הורדת קובץ md</a>
+        </div>
+      </div>
+      <article class="md" id="resDoc"></article>
+    </section>
+    <section class="card">
+      <h3>🗳️ איך כל אחד הצביע</h3>
+      <div class="vote-grid" id="resBallots"></div>
     </section>
   </main>
 

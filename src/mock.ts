@@ -70,6 +70,11 @@ export async function speak(mk: MKProfile, ctx: SpeakContext) {
       "הבייס שלי צריך לשמוע אותי חזק פה.",
     ]),
     readyToVote: n > 8 && Math.random() < 0.6,
+    docContribution: ctx.task && Math.random() < 0.6 ? pick([
+      `סעיף שדורש מ${mk.party}: תקציב ייעודי ולוח זמנים של 12 חודשים.`,
+      `הסתייגות של ${mk.party}: בלי פגיעה בציבור שלנו.`,
+      `צעד מעשי: צוות בין-משרדי שמדווח לכנסת כל רבעון.`,
+    ]) : "",
     proposedResolution: Math.random() < 0.25 ? `הכנסת מחליטה להקים צוות מיוחד שיגיש תוך 60 יום תוכנית בנושא ${ctx.topic}.` : "",
     sources: [],
     queries: Math.random() < 0.3 ? [`🔎 ${ctx.topic} נתונים 2026`] : [],
@@ -108,5 +113,13 @@ export async function summary(): Promise<{ summary: string; highlights: { betwee
   return {
     summary: "(דמו) הדיון היה סוער, עם הרבה קריאות ביניים ועקיצות. בסוף הוחלט להצביע, והתוצאה משקפת את הגושים הקיימים.",
     highlights: [],
+  };
+}
+
+export async function document(topic: string, task: string, contributions: string): Promise<{ title: string; markdown: string }> {
+  await delay();
+  return {
+    title: `(דמו) מענה למטלה: ${task.slice(0, 50)}`,
+    markdown: `## רקע\nבמליאה התקיים דיון סוער בנושא "${topic}".\n\n## ההמלצות\n1. להקים צוות בין-משרדי.\n2. להקצות תקציב ייעודי.\n3. לדווח לכנסת כל רבעון.\n\n## הצעות שעלו בדיון\n${contributions || "(אין)"}\n\n## מחלוקות והסתייגויות\n- (דמו) חלק מהסיעות מתנגדות ללוח הזמנים.`,
   };
 }

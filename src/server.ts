@@ -24,7 +24,7 @@ app.get("/api/sessions", (_req, res) => {
 });
 
 app.post("/api/sessions", (req, res) => {
-  const { topic, maxTurns, memberIds } = req.body ?? {};
+  const { topic, maxTurns, memberIds, task, fast } = req.body ?? {};
   if (typeof topic !== "string" || topic.trim().length < 3) {
     res.status(400).json({ error: "צריך נושא לדיון" });
     return;
@@ -33,6 +33,8 @@ app.post("/api/sessions", (req, res) => {
     topic,
     maxTurns: Number.isFinite(maxTurns) ? Math.max(3, Math.min(60, Number(maxTurns))) : undefined,
     memberIds: Array.isArray(memberIds) ? memberIds : undefined,
+    task: typeof task === "string" ? task.slice(0, 2000) : undefined,
+    fast: fast === true,
   });
   live.set(debate.id, debate);
   void debate.run();
@@ -47,6 +49,19 @@ app.get("/api/sessions/:id", (req, res) => {
     return;
   }
   res.json(snap);
+});
+
+/** Chair's-task mode: download the document the plenum produced. */
+app.get("/api/sessions/:id/document.md", (req, res) => {
+  const d = live.get(req.params.id);
+  const doc = (d ? d.snapshot() : loadSavedSession(req.params.id))?.document;
+  if (!doc) {
+    res.status(404).json({ error: "אין מסמך לישיבה הזו" });
+    return;
+  }
+  res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="knaiset-${req.params.id}.md"`);
+  res.send(doc.markdown);
 });
 
 /** Server-sent events: the full snapshot first, then every new event live. */

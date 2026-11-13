@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { config, structuredCall } from "./llm.js";
-import { chairSystem, resolutionPrompt, summaryPrompt } from "./prompts.js";
+import { chairSystem, documentPrompt, resolutionPrompt, summaryPrompt } from "./prompts.js";
 import * as mock from "./mock.js";
 
 /** The neutral chair / Knesset secretariat: drafts the motion and writes the wrap-up. */
@@ -34,5 +34,26 @@ export async function summarize(
     user: summaryPrompt(topic, transcript, voteText, roster),
     schema: SummarySchema,
     effort: "low",
+  });
+}
+
+const DocumentSchema = z.object({ title: z.string(), markdown: z.string() });
+
+/** Chair's-task mode: the drafting committee turns the debate into the requested document. */
+export async function draftDocument(p: {
+  topic: string;
+  task: string;
+  transcript: string;
+  contributions: string;
+  seats: string;
+}): Promise<z.infer<typeof DocumentSchema>> {
+  if (config.mock) return mock.document(p.topic, p.task, p.contributions);
+  return structuredCall({
+    model: config.mkModel,
+    system: chairSystem(),
+    user: documentPrompt(p),
+    schema: DocumentSchema,
+    effort: "medium",
+    maxTokens: 16000,
   });
 }

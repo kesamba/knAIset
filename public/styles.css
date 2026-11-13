@@ -250,3 +250,40 @@ blockquote { font-size: 1.1rem; background: var(--bg); border-radius: 12px; marg
   .tl-row { grid-template-columns: 24px 80px 1fr; }
   .air-row { grid-template-columns: 80px 1fr 40px; }
 }
+
+/* ---------- chair's task + fast mode ---------- */
+a.button { display: inline-block; text-decoration: none; border-radius: 999px; padding: .5em 1.1em; }
+.mode-box { text-align: start; background: var(--bg); border: 1px dashed var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 6px; }
+.mode-box p { margin: 0; }
+.mode-box .chips { justify-content: flex-start; }
+.mode-label { font-weight: 700; }
+.hero .mode-box textarea { font-size: 1rem; text-align: start; }
+.fast-toggle { font-size: .9rem; align-items: flex-start; line-height: 1.4; margin-top: 4px; }
+.fast-toggle input { margin-top: .25em; }
+.center-row { justify-content: center; margin-top: 10px; }
+
+.fast-card { max-width: 680px; margin: 6vh auto; text-align: center; }
+.fast-gavel { font-size: 3rem; animation: bob 1.2s ease-in-out infinite; }
+.fast-card h2 { font-size: clamp(1.2rem, 3vw, 1.6rem); }
+.fast-steps { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin: 14px 0; }
+.fast-steps span { border: 1px solid var(--line); border-radius: 999px; padding: .15em .8em; font-size: .85rem; color: var(--muted); background: var(--bg); }
+.fast-steps span.on { border-color: var(--gold); color: var(--ink); background: color-mix(in srgb, var(--gold) 18%, var(--card)); font-weight: 700; }
+.fast-steps span.ok { color: var(--for); border-color: var(--for); }
+.progress { height: 12px; border-radius: 999px; background: var(--bg-2); overflow: hidden; }
+.progress div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--gold)); transition: width .6s; }
+.fast-ticker { min-height: 3em; margin: 12px 0 0; }
+
+.doc-card { margin-top: 16px; }
+.doc-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.doc-head h3 { margin: 0; }
+.md { max-width: 860px; margin: 0 auto; padding: 8px 4px; line-height: 1.7; }
+.md h1, .md h2, .md h3, .md h4 { margin: 1.1em 0 .4em; }
+.md h1 { font-size: 1.6rem; } .md h2 { font-size: 1.25rem; } .md h3 { font-size: 1.08rem; }
+.md table { border-collapse: collapse; width: 100%; font-size: .88rem; margin: .6em 0; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: start; vertical-align: top; }
+.md th { background: var(--bg-2); }
+.md blockquote { font-size: .95rem; }
+.md code { background: var(--bg-2); border-radius: 6px; padding: 0 .3em; }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 1.2em 0; }
+.md a { color: var(--accent); }
+.drafting-pulse { animation: blink 1.4s ease-in-out infinite; }

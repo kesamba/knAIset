@@ -14,7 +14,7 @@ const TONE = { calm: "רגוע", passionate: "נלהב", angry: "כועס 😠",
 const TONE_COLOR = { calm: "#8aa0c8", passionate: "#f08c2e", angry: "#d64545", sarcastic: "#9b59d0", conciliatory: "#2f9e5b", humorous: "#e3b22b", solemn: "#3a5bb8" };
 const STANCE = { for: "בעד", against: "נגד", mixed: "מעורב", undecided: "מתלבט" };
 const VOTE = { for: "בעד ✅", against: "נגד ❌", abstain: "נמנע ⚪" };
-const PHASE = { research: "🔎 מחקר מקדים: הח״כים מתכוננים", debate: "🎤 דיון במליאה", voting: "🗳️ הצבעה", done: "✅ הישיבה ננעלה", error: "⚠️ תקלה" };
+const PHASE = { research: "🔎 מחקר מקדים: הח״כים מתכוננים", debate: "🎤 דיון במליאה", drafting: "✍️ ועדת הניסוח כותבת את המסמך", voting: "🗳️ הצבעה", done: "✅ הישיבה ננעלה", error: "⚠️ תקלה" };
 const BLOC_ORDER = ["arab", "left", "center", "center-right", "haredi", "right"];
 const SUGGESTIONS = [
   "חוק גיוס לבני ישיבות",
@@ -25,6 +25,13 @@ const SUGGESTIONS = [
   "עונש מוות למחבלים",
   "נישואין אזרחיים",
   "הרכבת ממשלת אחדות",
+];
+
+const TASK_SUGGESTIONS = [
+  "הגישו מסמך מדיניות של עד עמוד: 5 צעדים מעשיים, לוח זמנים ועלות משוערת",
+  "נסחו הצעת חוק: מטרה, סעיפים ודברי הסבר",
+  "כתבו טבלת יתרונות וחסרונות לפי כל סיעה, ובסוף המלצה",
+  "נסחו מכתב רשמי של הכנסת לממשלה עם 3 דרישות",
 ];
 
 let roster = null;
@@ -43,6 +50,12 @@ let replaying = false;
     b.type = "button";
     b.onclick = () => ($("#topicInput").value = s);
     chips.append(b);
+  }
+  for (const s of TASK_SUGGESTIONS) {
+    const b = el("button", "chip", esc(s));
+    b.type = "button";
+    b.onclick = () => ($("#taskInput").value = s);
+    $("#taskChips").append(b);
   }
   const pick = $("#memberPick");
   for (const m of roster.members) {
@@ -66,6 +79,13 @@ let replaying = false;
   $("#analysisBtn").onclick = showAnalysis;
   $("#backToLive").onclick = () => show("live");
   $("#replayBtn").onclick = replay;
+  $("#resultBtn").onclick = showResult;
+  $("#resWatch").onclick = () => show("live");
+  $("#resReplay").onclick = replay;
+  $("#resAnalysis").onclick = showAnalysis;
+  $("#fastWatch").onclick = () => { S.watch = true; show("live"); drawLiveLinks(); };
+  $("#fastVote").onclick = () => { $("#customResolution").value = ""; $("#voteDialog").showModal(); };
+  document.querySelectorAll("[data-copy-doc]").forEach((b) => (b.onclick = copyDoc));
   window.addEventListener("resize", () => S && drawLiveLinks());
   route();
 })();
@@ -77,7 +97,7 @@ function route() {
 }
 
 function show(view) {
-  for (const v of ["start", "live", "analysis"]) $(`#${v}View`).hidden = v !== view;
+  for (const v of ["start", "live", "fast", "result", "analysis"]) $(`#${v}View`).hidden = v !== view;
   window.scrollTo({ top: 0 });
 }
 
@@ -106,7 +126,13 @@ async function startSession(e) {
   const r = await fetch("/api/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ topic, maxTurns: Number($("#maxTurns").value), memberIds }),
+    body: JSON.stringify({
+      topic,
+      maxTurns: Number($("#maxTurns").value),
+      memberIds,
+      task: $("#taskInput").value.trim(),
+      fast: $("#fastInput").checked,
+    }),
   }).then((r) => r.json());
   if (r.error) return toast(r.error);
   location.hash = `#/s/${r.id}`;
@@ -124,6 +150,8 @@ function openSession(id) {
     for (const ev of snap.events) apply(ev, false);
     S.live = !["done", "error"].includes(snap.phase);
     syncControls();
+    if (S.fast && snap.phase === "done") showResult();
+    else if (S.fast && S.live) show("fast");
   });
   es.addEventListener("game", (m) => apply(JSON.parse(m.data), true));
   es.addEventListener("fatal", (m) => toast(JSON.parse(m.data).message));
@@ -150,6 +178,7 @@ function sendChair() {
 function syncControls() {
   const live = S.live && !replaying && ["research", "debate"].includes(S.phase);
   $("#liveControls").hidden = !live;
+  $("#fastVote").hidden = !(S.live && S.phase === "debate");
   $("#chairBar").hidden = !live;
   $("#pauseBtn").textContent = S.paused ? "▶️ המשך" : "⏸️ השהיה";
 }
@@ -176,6 +205,14 @@ function resetView(snap) {
     ballots: [],
     summary: "",
     openMk: null,
+    task: snap.task ?? "",
+    fast: !!snap.fast,
+    watch: false,
+    maxTurns: snap.members.length * 2,
+    draft: null,
+    document: null,
+    researched: 0,
+    ticker: "הישיבה נפתחת…",
   };
   $("#topicTitle").textContent = snap.topic;
   $("#feed").innerHTML = "";
@@ -185,6 +222,9 @@ function resetView(snap) {
   $("#stamp").hidden = true;
   $("#summaryText").textContent = "";
   $("#analysisBtn").hidden = true;
+  $("#resultBtn").hidden = true;
+  $("#docSection").hidden = true;
+  $("#liveDoc").innerHTML = "";
   $("#podiumName").textContent = "הישיבה נפתחת…";
   $("#podiumText").textContent = "";
   buildSeats($("#plenum"), S.members, true);
@@ -266,9 +306,37 @@ function speechEntry(sp) {
 
 // ---------------- event reducer ----------------
 function apply(ev, animate) {
+  applyEvent(ev, animate);
+  if (S.fast) updateFast(ev);
+  // Fast mode: when the session ends live, skip straight to the result page.
+  if (S.fast && animate && !replaying && ev.type === "phase" && ev.phase === "done" && !$("#fastView").hidden) showResult();
+}
+
+function applyEvent(ev, animate) {
   S.events.push(ev);
   const name = (id) => S.byId[id]?.name ?? id;
   switch (ev.type) {
+    case "session_started":
+      if (ev.maxTurns) S.maxTurns = ev.maxTurns;
+      if (ev.task != null) S.task = ev.task;
+      if (ev.task) systemEntry(`📝 <b>מטלת היו״ר:</b> ${esc(ev.task)}`);
+      break;
+    case "document_drafting":
+      $("#podiumName").textContent = "✍️ ועדת הניסוח";
+      $("#podiumText").innerHTML = '<span class="drafting-pulse">כותבת את המסמך מתוך הדיון…</span>';
+      systemEntry("✍️ <b>ועדת הניסוח</b> כותבת את המסמך מתוך הדיון וההצעות של הח״כים");
+      break;
+    case "document_drafted":
+      S.draft = { title: ev.title, body: ev.body };
+      renderLiveDoc();
+      systemEntry(`📄 הטיוטה מוכנה: <b>${esc(ev.title)}</b>`);
+      break;
+    case "document_ready":
+      S.document = ev.document;
+      renderLiveDoc();
+      $("#resultBtn").hidden = false;
+      systemEntry("📄 המסמך הסופי מוכן להורדה");
+      break;
     case "phase":
       setPhase(ev.phase);
       if (ev.phase === "debate") systemEntry("🔔 <b>היו״ר:</b> הישיבה נפתחת. מקל הדיבור מוכן.");
@@ -289,6 +357,7 @@ function apply(ev, animate) {
       break;
     case "research_done": {
       S.dossiers[ev.mkId] = ev.dossier;
+      S.researched++;
       const s = seatEl(ev.mkId);
       s?.classList.remove("researching");
       s?.classList.add("ready");
@@ -363,6 +432,7 @@ function apply(ev, animate) {
       $("#stamp").className = `stamp ${ev.vote.passed ? "pass" : "fail"}`;
       $("#stamp").textContent = ev.vote.passed ? "ההצעה התקבלה" : "ההצעה נדחתה";
       $("#analysisBtn").hidden = false;
+      $("#resultBtn").hidden = false;
       break;
     case "summary":
       S.summary = ev.summary;
@@ -527,7 +597,7 @@ async function openHistory() {
   const box = $("#historyList");
   box.innerHTML = list.length ? "" : '<p class="muted">עוד אין דיונים שמורים.</p>';
   for (const s of list) {
-    const it = el("div", "hist-item", `<span>${esc(s.topic)}</span><span class="muted small">${s.createdAt.slice(0, 16).replace("T", " ")} ${s.passed === true ? "✅" : s.passed === false ? "❌" : "…"}</span>`);
+    const it = el("div", "hist-item", `<span>${esc(s.topic)}</span><span class="muted small">${s.createdAt.slice(0, 16).replace("T", " ")} ${s.fast ? "⚡" : ""}${s.hasDocument ? "📄" : ""} ${s.passed === true ? "✅" : s.passed === false ? "❌" : "…"}</span>`);
     it.onclick = () => {
       $("#historyDialog").close();
       location.hash = `#/s/${s.id}`;
@@ -543,7 +613,7 @@ async function replay() {
   if (!S) return;
   es?.close();
   const events = [...S.events];
-  const snap = { id: S.id, topic: S.topic, createdAt: S.createdAt, members: S.members, phase: "research" };
+  const snap = { id: S.id, topic: S.topic, createdAt: S.createdAt, members: S.members, phase: "research", task: S.task, fast: S.fast };
   show("live");
   resetView(snap);
   replaying = true;
@@ -638,4 +708,167 @@ function showAnalysis() {
       return `<div class="stance-row"><span class="nm">${m.emoji} ${esc(m.name)}</span>${chain || '<span class="muted small">לא דיבר</span>'}${b ? ` ⟹ <b>${VOTE[b.vote]}</b>` : ""}</div>`;
     })
     .join("");
+}
+
+// ---------------- fast mode ----------------
+function updateFast(ev) {
+  const name = (id) => S.byId[id]?.name ?? id;
+  const n = S.members.length;
+  const t = {
+    research_started: () => `🔎 ${name(ev.mkId)} חוקר את הנושא…`,
+    research_done: () => `📁 ${S.researched} מתוך ${n} סיימו להכין תיק מודיעין`,
+    stick_passed: () => `🎤 המקל אצל ${name(ev.mkId)} (${ev.reason})`,
+    speech: () => `🎤 <b>${esc(name(ev.speech.mkId))}:</b> «${esc(ev.speech.text.split(/\s+/).slice(0, 22).join(" "))}…»`,
+    vote_requested: () => "🗳️ עוברים להצבעה",
+    document_drafting: () => "✍️ ועדת הניסוח כותבת את המסמך מתוך הדיון…",
+    document_drafted: () => `📄 הטיוטה מוכנה: ${esc(ev.title)}. עולה להצבעה`,
+    vote_called: () => "🗳️ הח״כים מצביעים…",
+    vote_cast: () => `🗳️ ${name(ev.ballot.mkId)}: ${VOTE[ev.ballot.vote]} (${S.ballots.length}/${n})`,
+    vote_result: () => (ev.vote.passed ? "✅ ההצעה התקבלה. כותבים סיכום…" : "❌ ההצעה נדחתה. כותבים סיכום…"),
+    fatal: () => `⛔ ${esc(ev.message)}`,
+  }[ev.type];
+  if (t) S.ticker = ["speech", "fatal"].includes(ev.type) ? t() : esc(t());
+
+  const p = S.phase;
+  const steps = [["research", "מחקר"], ["debate", "דיון"], ...(S.task ? [["drafting", "ניסוח המסמך"]] : []), ["voting", "הצבעה"], ["done", "תוצאה"]];
+  const at = steps.findIndex(([k]) => k === p);
+  $("#fastSteps").innerHTML = steps.map(([k, l], i) => `<span class="${i === at ? "on" : i < at ? "ok" : ""}">${i < at ? "✓ " : ""}${l}</span>`).join("");
+  const pct =
+    p === "research" ? 18 * (S.researched / n)
+    : p === "debate" ? 20 + 50 * Math.min(1, S.speeches.length / S.maxTurns)
+    : p === "drafting" ? 74
+    : p === "voting" ? 80 + 16 * (S.ballots.length / n)
+    : 100;
+  $("#fastBar").style.width = `${pct}%`;
+  $("#fastIcon").textContent = { research: "🔎", debate: "🎤", drafting: "✍️", voting: "🗳️", done: "✅", error: "⚠️" }[p] ?? "⚡";
+  $("#fastTopic").textContent = S.topic;
+  $("#fastTask").textContent = S.task ? `📝 ${S.task}` : "";
+  $("#fastTicker").innerHTML = S.ticker;
+}
+
+// ---------------- result page ----------------
+function showResult() {
+  show("result");
+  const v = S.vote;
+  $("#resTopic").textContent = S.topic;
+  $("#resTask").textContent = S.task ? `📝 מטלת היו״ר: ${S.task}` : "";
+  $("#resStamp").hidden = !v;
+  if (v) {
+    $("#resStamp").className = `stamp ${v.passed ? "pass" : "fail"}`;
+    $("#resStamp").textContent = S.document ? (v.passed ? "המסמך אומץ" : "המסמך נדחה") : v.passed ? "ההצעה התקבלה" : "ההצעה נדחתה";
+    $("#resResolution").textContent = v.resolution;
+    fillSeatBar($("#resSeatBar"), v);
+    $("#resSeatNote").textContent = seatNote(v);
+  } else {
+    $("#resResolution").textContent = S.phase === "error" ? "הישיבה הסתיימה בתקלה לפני ההצבעה." : "עוד אין הצבעה.";
+    $("#resSeatBar").innerHTML = "";
+    $("#resSeatNote").textContent = "";
+  }
+  $("#resSummary").textContent = S.summary ? `📰 ${S.summary}` : "";
+  const doc = S.document ?? (S.draft ? { title: S.draft.title, markdown: `# ${S.draft.title}\n\n${S.draft.body}` } : null);
+  $("#resDocCard").hidden = !doc;
+  if (doc) $("#resDoc").innerHTML = mdToHtml(doc.markdown);
+  syncDownload();
+  $("#resBallots").innerHTML = S.ballots.map(ballotHtml).join("") || '<p class="muted">אין הצבעות</p>';
+}
+
+function renderLiveDoc() {
+  const final = S.document;
+  const doc = final ? final.markdown : S.draft ? `# ${S.draft.title}\n\n${S.draft.body}` : "";
+  $("#docSection").hidden = !doc;
+  $("#docHeading").textContent = final ? "📄 המסמך הסופי" : "📄 טיוטת המסמך (עולה להצבעה)";
+  $("#liveDoc").innerHTML = mdToHtml(doc);
+  syncDownload();
+}
+
+function syncDownload() {
+  document.querySelectorAll("[data-download-doc]").forEach((a) => {
+    a.hidden = !S.document;
+    a.href = `/api/sessions/${S.id}/document.md`;
+  });
+}
+
+async function copyDoc() {
+  const text = S.document?.markdown ?? (S.draft ? `# ${S.draft.title}\n\n${S.draft.body}` : "");
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("📋 המסמך הועתק");
+  } catch {
+    toast("ההעתקה נכשלה");
+  }
+}
+
+function ballotHtml(b) {
+  const m = S.byId[b.mkId];
+  return `<div class="ballot ${b.vote}"><div class="who"><b>${m.emoji} ${esc(m.name)}</b> <span class="muted small">${m.seats} מנדטים</span></div><div class="v">${VOTE[b.vote]}</div><div class="ex">${esc(b.explanation)}</div></div>`;
+}
+
+function fillSeatBar(bar, v) {
+  const total = Object.values(v.bySeats).reduce((a, b) => a + b, 0) || 1;
+  bar.innerHTML = "";
+  for (const k of ["for", "abstain", "against"]) {
+    const d = el("div", null, v.bySeats[k] ? `${{ for: "בעד", against: "נגד", abstain: "נמנעים" }[k]} ${v.bySeats[k]}` : "");
+    d.style.width = `${(100 * v.bySeats[k]) / total}%`;
+    d.style.background = `var(--${k})`;
+    bar.append(d);
+  }
+}
+
+function seatNote(v) {
+  return `לפי מנדטים: בעד ${v.bySeats.for} · נגד ${v.bySeats.against} · נמנעים ${v.bySeats.abstain}   |   לפי ראשי מפלגות: ${v.byHeads.for}–${v.byHeads.against}–${v.byHeads.abstain}`;
+}
+
+// ---------------- tiny, escape-first Markdown renderer ----------------
+function mdInline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+
+function mdToHtml(src) {
+  const lines = String(src ?? "").replace(/\r/g, "").split("\n");
+  const out = [];
+  let i = 0;
+  const isTable = (l) => /^\s*\|.*\|\s*$/.test(l);
+  const cells = (l) => l.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map((c) => mdInline(c.trim().replace(/\\\|/g, "|")));
+  while (i < lines.length) {
+    const l = lines[i];
+    let m;
+    if (!l.trim()) { i++; continue; }
+    if ((m = l.match(/^(#{1,6})\s+(.*)$/))) { out.push(`<h${m[1].length}>${mdInline(m[2])}</h${m[1].length}>`); i++; continue; }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(l)) { out.push("<hr>"); i++; continue; }
+    if (isTable(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+      const head = cells(l);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && isTable(lines[i])) rows.push(cells(lines[i++]));
+      out.push(`<table><thead><tr>${head.map((c) => `<th>${c}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+      continue;
+    }
+    if (/^>\s?/.test(l)) {
+      const q = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) q.push(lines[i++].replace(/^>\s?/, ""));
+      out.push(`<blockquote>${mdInline(q.join(" "))}</blockquote>`);
+      continue;
+    }
+    if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) {
+      const ordered = /^\s*\d+[.)]/.test(l);
+      const items = [];
+      while (i < lines.length) {
+        if (/^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*+]|\d+[.)])\s+/, ""));
+        else if (/^\s{2,}\S/.test(lines[i]) && items.length) items[items.length - 1] += "\n" + lines[i++].trim();
+        else break;
+      }
+      const tag = ordered ? "ol" : "ul";
+      out.push(`<${tag}>${items.map((x) => `<li>${x.split("\n").map(mdInline).join("<br>")}</li>`).join("")}</${tag}>`);
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|>|\s*([-*+]|\d+[.)])\s+|\s*\|)/.test(lines[i]) && !/^\s*-{3,}\s*$/.test(lines[i])) para.push(lines[i++]);
+    if (!para.length) para.push(lines[i++]);
+    out.push(`<p>${mdInline(para.join(" "))}</p>`);
+  }
+  return out.join("\n");
 }
